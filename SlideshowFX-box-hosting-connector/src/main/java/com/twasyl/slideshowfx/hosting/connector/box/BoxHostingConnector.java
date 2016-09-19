@@ -4,10 +4,8 @@ import com.box.sdk.BoxAPIConnection;
 import com.twasyl.slideshowfx.engine.presentation.PresentationEngine;
 import com.twasyl.slideshowfx.global.configuration.GlobalConfiguration;
 import com.twasyl.slideshowfx.hosting.connector.AbstractHostingConnector;
-import com.twasyl.slideshowfx.hosting.connector.BasicHostingConnectorOptions;
 import com.twasyl.slideshowfx.hosting.connector.exceptions.HostingConnectorException;
 import com.twasyl.slideshowfx.hosting.connector.io.RemoteFile;
-import javafx.concurrent.Worker;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -20,8 +18,13 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -31,19 +34,22 @@ import java.util.logging.Logger;
  * @version 1.0
  * @since SlideshowFX @@NEXT-VERSION@@
  */
-public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingConnectorOptions> {
+public class BoxHostingConnector extends AbstractHostingConnector<BoxHostingConnectorOptions> {
     private static final Logger LOGGER = Logger.getLogger(BoxHostingConnector.class.getName());
 
+    protected static final String REFRESH_TOKEN_PROPERTY_SUFFIX = ".refreshtoken";
+
+    private String refreshToken;
     private BoxAPIConnection boxApi;
 
     public BoxHostingConnector() {
         super("box", "Box", new RemoteFile(null));
 
-        this.setOptions(new BasicHostingConnectorOptions());
+        this.setOptions(new BoxHostingConnectorOptions());
 
         String configuration = GlobalConfiguration.getProperty(getConfigurationBaseName().concat(CONSUMER_KEY_PROPERTY_SUFFIX));
         if(configuration != null && !configuration.trim().isEmpty()) {
-            this.getOptions().setConsumerKey(configuration.trim());
+            this.getOptions().setRefreshToken(configuration.trim());
         }
 
         configuration = GlobalConfiguration.getProperty(getConfigurationBaseName().concat(CONSUMER_SECRET_PROPERTY_SUFFIX));
@@ -61,14 +67,27 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
             this.accessToken = configuration;
         }
 
+        configuration = GlobalConfiguration.getProperty(getConfigurationBaseName().concat(REFRESH_TOKEN_PROPERTY_SUFFIX));
+        if(configuration != null && !configuration.trim().isEmpty()) {
+            this.refreshToken = configuration;
+        }
+
         if(this.getOptions().getConsumerKey() != null && this.getOptions().getConsumerSecret() != null) {
             this.boxApi = new BoxAPIConnection(this.getOptions().getConsumerKey(), this.getOptions().getConsumerSecret());
+
+            if(this.accessToken != null && !this.accessToken.isEmpty()) {
+                this.boxApi.setAccessToken(this.accessToken);
+            }
+
+            if(this.refreshToken != null && !this.refreshToken.isEmpty()) {
+                this.boxApi.setRefreshToken(this.refreshToken);
+            }
         }
     }
 
     @Override
     public Node getConfigurationUI() {
-        this.newOptions = new BasicHostingConnectorOptions();
+        this.newOptions = new BoxHostingConnectorOptions();
         this.newOptions.setConsumerKey(this.getOptions().getConsumerKey());
         this.newOptions.setConsumerSecret(this.getOptions().getConsumerSecret());
         this.newOptions.setRedirectUri(this.getOptions().getRedirectUri());
@@ -139,10 +158,24 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
 
         browser.setPrefSize(500, 500);
 
-        // Listening for the div containing the access code to be displayed
-        browser.getEngine().getLoadWorker().stateProperty().addListener((stateValue, oldState, newState) -> {
-            if (newState == Worker.State.SUCCEEDED) {
-                // Retrieve the authentication code and the access token
+        browser.getEngine().locationProperty().addListener((locationProperty, oldLocation, newLocation) -> {
+            if(newLocation != null && newLocation.startsWith(this.getOptions().getRedirectUri())) {
+                System.out.println(newLocation);
+                try {
+                    final Map<String, String> uriParameters = getURIParameters(new URI(newLocation));
+
+                    if(uriParameters.containsKey("code")) {
+                        this.boxApi.authenticate(uriParameters.get("code"));
+                        this.accessToken = this.boxApi.getAccessToken();
+                    }
+                } catch (URISyntaxException e) {
+                    LOGGER.log(Level.SEVERE, "Error when parsing the redirect URI", e);
+                } finally {
+                    if (this.accessToken != null) {
+                        GlobalConfiguration.setProperty(getConfigurationBaseName().concat(ACCESS_TOKEN_PROPERTY_SUFFIX), this.accessToken);
+                    }
+                    stage.close();
+                }
             }
         });
 
@@ -155,6 +188,25 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
         if(!this.isAuthenticated()) throw new HostingConnectorException(HostingConnectorException.AUTHENTICATION_FAILURE);
     }
 
+    protected Map<String, String> getURIParameters(final URI uri) {
+        final Map<String, String> parameters = new HashMap<>();
+        final String query = uri.getQuery();
+
+        if(query != null && !query.isEmpty()) {
+            final String[] queryParameters = query.split("&");
+
+            for(String parameter : queryParameters) {
+                final int equalSign = parameter.indexOf('=');
+                final String name = equalSign == -1 ? parameter : parameter.substring(0, equalSign);
+                final String value = equalSign == -1 ? null : parameter.substring(equalSign + 1);
+
+                parameters.put(name, value);
+            }
+        }
+
+        return parameters;
+    }
+
     protected String getAuthenticationURL() {
         final StringBuilder url = new StringBuilder("https://account.box.com/api/oauth2/authorize")
                 .append("?response_type=code")
@@ -164,9 +216,21 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
 
         return url.toString();
     }
+
     @Override
     public boolean checkAccessToken() {
         boolean valid = false;
+
+        if(this.boxApi != null) {
+            try {
+                this.boxApi.refresh();
+            } catch(Exception e) {
+                LOGGER.log(Level.FINE, "Error when trying to refresh the BOX api connection", e);
+            }
+
+            valid = this.accessToken != null && !this.accessToken.isEmpty()
+                    && this.refreshToken != null && !this.refreshToken.isEmpty();
+        }
 
         return valid;
     }
