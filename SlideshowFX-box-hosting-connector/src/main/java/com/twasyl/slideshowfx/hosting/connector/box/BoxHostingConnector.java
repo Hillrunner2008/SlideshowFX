@@ -1,9 +1,10 @@
 package com.twasyl.slideshowfx.hosting.connector.box;
 
-import com.box.sdk.BoxAPIConnection;
+import com.box.sdk.*;
 import com.twasyl.slideshowfx.engine.presentation.PresentationEngine;
 import com.twasyl.slideshowfx.global.configuration.GlobalConfiguration;
 import com.twasyl.slideshowfx.hosting.connector.AbstractHostingConnector;
+import com.twasyl.slideshowfx.hosting.connector.BasicHostingConnectorOptions;
 import com.twasyl.slideshowfx.hosting.connector.exceptions.HostingConnectorException;
 import com.twasyl.slideshowfx.hosting.connector.io.RemoteFile;
 import javafx.geometry.Pos;
@@ -27,6 +28,8 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static com.twasyl.slideshowfx.engine.presentation.PresentationEngine.DEFAULT_DOTTED_ARCHIVE_EXTENSION;
+
 /**
  * This connector allows to interact with Box.
  *
@@ -34,22 +37,22 @@ import java.util.logging.Logger;
  * @version 1.0
  * @since SlideshowFX @@NEXT-VERSION@@
  */
-public class BoxHostingConnector extends AbstractHostingConnector<BoxHostingConnectorOptions> {
+public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingConnectorOptions> {
     private static final Logger LOGGER = Logger.getLogger(BoxHostingConnector.class.getName());
 
     protected static final String REFRESH_TOKEN_PROPERTY_SUFFIX = ".refreshtoken";
 
-    private String refreshToken;
     private BoxAPIConnection boxApi;
+    private String refreshToken;
 
     public BoxHostingConnector() {
         super("box", "Box", new RemoteFile(null));
 
-        this.setOptions(new BoxHostingConnectorOptions());
+        this.setOptions(new BasicHostingConnectorOptions());
 
         String configuration = GlobalConfiguration.getProperty(getConfigurationBaseName().concat(CONSUMER_KEY_PROPERTY_SUFFIX));
         if(configuration != null && !configuration.trim().isEmpty()) {
-            this.getOptions().setRefreshToken(configuration.trim());
+            this.getOptions().setConsumerKey(configuration.trim());
         }
 
         configuration = GlobalConfiguration.getProperty(getConfigurationBaseName().concat(CONSUMER_SECRET_PROPERTY_SUFFIX));
@@ -87,7 +90,7 @@ public class BoxHostingConnector extends AbstractHostingConnector<BoxHostingConn
 
     @Override
     public Node getConfigurationUI() {
-        this.newOptions = new BoxHostingConnectorOptions();
+        this.newOptions = new BasicHostingConnectorOptions();
         this.newOptions.setConsumerKey(this.getOptions().getConsumerKey());
         this.newOptions.setConsumerSecret(this.getOptions().getConsumerSecret());
         this.newOptions.setRedirectUri(this.getOptions().getRedirectUri());
@@ -160,19 +163,22 @@ public class BoxHostingConnector extends AbstractHostingConnector<BoxHostingConn
 
         browser.getEngine().locationProperty().addListener((locationProperty, oldLocation, newLocation) -> {
             if(newLocation != null && newLocation.startsWith(this.getOptions().getRedirectUri())) {
-                System.out.println(newLocation);
                 try {
                     final Map<String, String> uriParameters = getURIParameters(new URI(newLocation));
 
                     if(uriParameters.containsKey("code")) {
                         this.boxApi.authenticate(uriParameters.get("code"));
                         this.accessToken = this.boxApi.getAccessToken();
+                        this.refreshToken = this.boxApi.getRefreshToken();
                     }
                 } catch (URISyntaxException e) {
                     LOGGER.log(Level.SEVERE, "Error when parsing the redirect URI", e);
                 } finally {
                     if (this.accessToken != null) {
                         GlobalConfiguration.setProperty(getConfigurationBaseName().concat(ACCESS_TOKEN_PROPERTY_SUFFIX), this.accessToken);
+                    }
+                    if (this.refreshToken != null) {
+                        GlobalConfiguration.setProperty(getConfigurationBaseName().concat(REFRESH_TOKEN_PROPERTY_SUFFIX), this.refreshToken);
                     }
                     stage.close();
                 }
@@ -223,13 +229,11 @@ public class BoxHostingConnector extends AbstractHostingConnector<BoxHostingConn
 
         if(this.boxApi != null) {
             try {
-                this.boxApi.refresh();
+                BoxUser.getCurrentUser(this.boxApi);
+                valid = true;
             } catch(Exception e) {
-                LOGGER.log(Level.FINE, "Error when trying to refresh the BOX api connection", e);
+                LOGGER.log(Level.FINE, "Error when trying to check the access token", e);
             }
-
-            valid = this.accessToken != null && !this.accessToken.isEmpty()
-                    && this.refreshToken != null && !this.refreshToken.isEmpty();
         }
 
         return valid;
@@ -276,7 +280,24 @@ public class BoxHostingConnector extends AbstractHostingConnector<BoxHostingConn
         final List<RemoteFile> folders = new ArrayList<>();
 
         if(this.isAuthenticated()) {
+            // TODO Manage when the parent is not the root folder
+            final BoxFolder folder = parent.isRoot() ? BoxFolder.getRootFolder(this.boxApi) : null;
 
+            folder.forEach(child -> {
+                boolean isValid = false;
+
+                if(includeFolders && includePresentations) {
+                    isValid = isFolder(child) || (isFile(child) && isNameEndingWithSuffix(child, DEFAULT_DOTTED_ARCHIVE_EXTENSION));
+                } else if(includeFolders && !includePresentations) {
+                    isValid = isFolder(child);
+                } else if(!includeFolders && includePresentations) {
+                    isValid = isFolder(child) && isNameEndingWithSuffix(child, DEFAULT_DOTTED_ARCHIVE_EXTENSION);
+                }
+
+                if(isValid) {
+                    folders.add(this.createRemoteFile(child, parent));
+                }
+            });
         } else {
             throw new HostingConnectorException(HostingConnectorException.NOT_AUTHENTICATED);
         }
@@ -301,4 +322,60 @@ public class BoxHostingConnector extends AbstractHostingConnector<BoxHostingConn
         return false;
     }
 
+    /**
+     * Creates an instance of {@link RemoteFile} from a given {@link com.box.sdk.BoxItem.Info} and a given parent.
+     * @param info The info to create the remote file for.
+     * @param parent The optional parent of the file.
+     * @return A well created {@link RemoteFile} instance.
+     */
+    protected RemoteFile createRemoteFile(final BoxItem.Info info, final RemoteFile parent) {
+        final RemoteFile file = new RemoteFile(parent, info.getName());
+        if(isFile(info)) {
+            file.setFile(true);
+            file.setFolder(false);
+        } else {
+            file.setFile(false);
+            file.setFolder(true);
+        }
+
+        return file;
+    }
+
+    /**
+     * Check if a given info is considered as a folder or not.
+     * @param info The info to check.
+     * @return {@code true} if the info is a folder, {@code false} otherwise.
+     */
+    protected boolean isFolder(final BoxItem.Info info) {
+        return info instanceof BoxFolder.Info;
+    }
+
+    /**
+     * Check if a given info is considered as a file or not.
+     * @param info The info to check.
+     * @return {@code true} if the info is a file, {@code false} otherwise.
+     */
+    protected boolean isFile(final BoxItem.Info info) {
+        return info instanceof BoxFile.Info;
+    }
+
+    /**
+     * Check if the name of an info is ending with a given suffix.
+     * @param info The info to check the name for.
+     * @param suffix The suffix expected at the end of the info's name.
+     * @return {@code true} if the info is ending with the suffix, {@code false} otherwise.
+     */
+    protected boolean isNameEndingWithSuffix(final BoxItem.Info info, final String suffix) {
+        return info.getName().endsWith(suffix);
+    }
+
+    /**
+     * Check if the name of the info is equal to another name. The check is case sensitive.
+     * @param info The info to check the name.
+     * @param name The expected name to be considered equal.
+     * @return {@code true} if the names are equal, {@code false} otherwise.
+     */
+    protected boolean isNameEqual(final BoxItem.Info info, final String name) {
+        return info.getName().equals(name);
+    }
 }
