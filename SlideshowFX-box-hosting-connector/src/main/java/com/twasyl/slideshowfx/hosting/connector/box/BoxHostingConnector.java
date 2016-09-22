@@ -5,6 +5,7 @@ import com.twasyl.slideshowfx.engine.presentation.PresentationEngine;
 import com.twasyl.slideshowfx.global.configuration.GlobalConfiguration;
 import com.twasyl.slideshowfx.hosting.connector.AbstractHostingConnector;
 import com.twasyl.slideshowfx.hosting.connector.BasicHostingConnectorOptions;
+import com.twasyl.slideshowfx.hosting.connector.box.io.BoxFile;
 import com.twasyl.slideshowfx.hosting.connector.exceptions.HostingConnectorException;
 import com.twasyl.slideshowfx.hosting.connector.io.RemoteFile;
 import javafx.geometry.Pos;
@@ -17,14 +18,10 @@ import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
 
-import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -46,7 +43,7 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
     private String refreshToken;
 
     public BoxHostingConnector() {
-        super("box", "Box", new RemoteFile(null));
+        super("box", "Box", new BoxFile());
 
         this.setOptions(new BasicHostingConnectorOptions());
 
@@ -194,6 +191,11 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
         if(!this.isAuthenticated()) throw new HostingConnectorException(HostingConnectorException.AUTHENTICATION_FAILURE);
     }
 
+    /**
+     * Get all parameters present in the query string of the given {@link URI}.
+     * @param uri The URI to extract the parameters from.
+     * @return A map containing the parameters present in the query string of the URI.
+     */
     protected Map<String, String> getURIParameters(final URI uri) {
         final Map<String, String> parameters = new HashMap<>();
         final String query = uri.getQuery();
@@ -213,6 +215,10 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
         return parameters;
     }
 
+    /**
+     * Get the URL allowing to ask the user the authorization for SlideshowFX to Box.
+     * @return The authorization URL.
+     */
     protected String getAuthenticationURL() {
         final StringBuilder url = new StringBuilder("https://account.box.com/api/oauth2/authorize")
                 .append("?response_type=code")
@@ -248,9 +254,32 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
         if(engine == null) throw new NullPointerException("The engine can not be null");
         if(engine.getArchive() == null) throw new NullPointerException("The archive to upload can not be null");
         if(!engine.getArchive().exists()) throw new FileNotFoundException("The archive to upload does not exist");
+        if(!(folder instanceof BoxFile)) throw new IllegalArgumentException("The given folder must be a BoxFile");
 
         if(this.isAuthenticated()) {
+            BoxFolder destination = folder.isRoot() ? BoxFolder.getRootFolder(this.boxApi) : new BoxFolder(this.boxApi, ((BoxFile) folder).getId());
 
+            final FileUploadParams parameters = new FileUploadParams();
+
+            if(overwrite && this.fileExists(engine, folder)) {
+                final String nameWithoutExtension = engine.getArchive().getName().substring(0, engine.getArchive().getName().lastIndexOf("."));
+                final Calendar calendar = Calendar.getInstance();
+
+                parameters.setName(String.format("%1$s %2$tF %2$tT.%3$s", nameWithoutExtension, calendar, engine.getArchiveExtension()));
+            } else {
+                parameters.setName(engine.getArchive().getName());
+            }
+
+            parameters.setSize(engine.getArchive().length());
+            parameters.setModified(new Date(System.currentTimeMillis()));
+
+            try(final FileInputStream input = new FileInputStream(engine.getArchive())) {
+                parameters.setContent(input);
+
+                destination.uploadFile(parameters);
+            } catch (IOException e) {
+                LOGGER.log(Level.SEVERE, "Can not upload the presentation", e);
+            }
         } else {
             throw new HostingConnectorException(HostingConnectorException.NOT_AUTHENTICATED);
         }
@@ -260,12 +289,17 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
     public File download(File destination, RemoteFile file) throws HostingConnectorException {
         if(destination == null) throw new NullPointerException("The destination can not be null");
         if(file == null) throw new NullPointerException("The file to download can not be null");
+        if(!(file instanceof BoxFile)) throw new IllegalArgumentException("The given file must be a BoxFile");
         if(!destination.isDirectory()) throw new IllegalArgumentException("The destination is not a folder");
 
-        File result;
-
         if(this.isAuthenticated()) {
+            final com.box.sdk.BoxFile fileToDownload = new com.box.sdk.BoxFile(this.boxApi, ((BoxFile) file).getId());
 
+            try(final FileOutputStream output = new FileOutputStream(new File(destination, file.getName()))) {
+                fileToDownload.download(output);
+            } catch (IOException e) {
+                LOGGER.log(Level.SEVERE, "Can not download the file", e);
+            }
         } else {
             throw new HostingConnectorException(HostingConnectorException.NOT_AUTHENTICATED);
         }
@@ -276,26 +310,17 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
     @Override
     public List<RemoteFile> list(RemoteFile parent, boolean includeFolders, boolean includePresentations) throws HostingConnectorException {
         if(parent == null) throw new NullPointerException("The parent can not be null");
+        if(!(parent instanceof BoxFile)) throw new IllegalArgumentException("The given parent must be a BoxFile");
 
         final List<RemoteFile> folders = new ArrayList<>();
 
         if(this.isAuthenticated()) {
-            // TODO Manage when the parent is not the root folder
-            final BoxFolder folder = parent.isRoot() ? BoxFolder.getRootFolder(this.boxApi) : null;
+            final BoxFolder folder = parent.isRoot() ? BoxFolder.getRootFolder(this.boxApi)
+                    : new BoxFolder(this.boxApi, ((BoxFile) parent).getId());
 
             folder.forEach(child -> {
-                boolean isValid = false;
-
-                if(includeFolders && includePresentations) {
-                    isValid = isFolder(child) || (isFile(child) && isNameEndingWithSuffix(child, DEFAULT_DOTTED_ARCHIVE_EXTENSION));
-                } else if(includeFolders && !includePresentations) {
-                    isValid = isFolder(child);
-                } else if(!includeFolders && includePresentations) {
-                    isValid = isFolder(child) && isNameEndingWithSuffix(child, DEFAULT_DOTTED_ARCHIVE_EXTENSION);
-                }
-
-                if(isValid) {
-                    folders.add(this.createRemoteFile(child, parent));
+                if(canFileBeLister(child, includeFolders, includePresentations)) {
+                    folders.add(this.createRemoteFile(child, (BoxFile) parent));
                 }
             });
         } else {
@@ -310,26 +335,34 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
         if(engine == null) throw new NullPointerException("The engine can not be null");
         if(engine.getArchive() == null) throw new NullPointerException("The archive file can not be null");
         if(destination == null) throw new NullPointerException("The destination can not be null");
+        if(!(destination instanceof BoxFile)) throw new IllegalArgumentException("The given destination must be a BoxFile");
 
-        boolean exist;
+        boolean exist = false;
 
         if(this.isAuthenticated()) {
+            BoxFolder destinationFolder = destination.isRoot() ? BoxFolder.getRootFolder(this.boxApi) : new BoxFolder(this.boxApi, ((BoxFile) destination).getId());
+            final Iterator<BoxItem.Info> children = destinationFolder.getChildren().iterator();
 
+            while(!exist && children.hasNext()) {
+                final BoxItem.Info child = children.next();
+                exist = isFile(child) && isNameEqual(child, engine.getArchive().getName());
+            }
         } else {
             throw new HostingConnectorException(HostingConnectorException.NOT_AUTHENTICATED);
         }
 
-        return false;
+        return exist;
     }
 
     /**
-     * Creates an instance of {@link RemoteFile} from a given {@link com.box.sdk.BoxItem.Info} and a given parent.
+     * Creates an instance of {@link RemoteFile} from a given {@link BoxItem.Info} and a given parent.
      * @param info The info to create the remote file for.
      * @param parent The optional parent of the file.
      * @return A well created {@link RemoteFile} instance.
      */
-    protected RemoteFile createRemoteFile(final BoxItem.Info info, final RemoteFile parent) {
-        final RemoteFile file = new RemoteFile(parent, info.getName());
+    protected RemoteFile createRemoteFile(final BoxItem.Info info, final BoxFile parent) {
+        final BoxFile file = new BoxFile(parent, info.getName(), info.getID());
+
         if(isFile(info)) {
             file.setFile(true);
             file.setFolder(false);
@@ -339,6 +372,27 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
         }
 
         return file;
+    }
+
+    /**
+     * Check if a given {@link BoxItem.Info} can be listed in the UI.
+     * @param child The info to check.
+     * @param includeFolders Indicates if the folders are allowed to be listed.
+     * @param includePresentations Indicates if the presentations are allowed to be listed.
+     * @return {@code true} if the child can be listed, {@code false} otherwise.
+     */
+    protected boolean canFileBeLister(BoxItem.Info child, boolean includeFolders, boolean includePresentations) {
+        boolean canBeListed = false;
+
+        if(includeFolders && includePresentations) {
+            canBeListed = isFolder(child) || (isFile(child) && isNameEndingWithSuffix(child, DEFAULT_DOTTED_ARCHIVE_EXTENSION));
+        } else if(includeFolders && !includePresentations) {
+            canBeListed = isFolder(child);
+        } else if(!includeFolders && includePresentations) {
+            canBeListed = isFolder(child) && isNameEndingWithSuffix(child, DEFAULT_DOTTED_ARCHIVE_EXTENSION);
+        }
+
+        return canBeListed;
     }
 
     /**
@@ -356,7 +410,7 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
      * @return {@code true} if the info is a file, {@code false} otherwise.
      */
     protected boolean isFile(final BoxItem.Info info) {
-        return info instanceof BoxFile.Info;
+        return info instanceof com.box.sdk.BoxFile.Info;
     }
 
     /**
@@ -376,6 +430,6 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
      * @return {@code true} if the names are equal, {@code false} otherwise.
      */
     protected boolean isNameEqual(final BoxItem.Info info, final String name) {
-        return info.getName().equals(name);
+        return info.getName().equalsIgnoreCase(name);
     }
 }
