@@ -261,7 +261,7 @@ public class BoxHostingConnector extends AbstractHostingConnector<BasicHostingCo
 
             final FileUploadParams parameters = new FileUploadParams();
 
-            if(overwrite && this.fileExists(engine, folder)) {
+            if(!overwrite && this.fileExists(engine, folder)) {
                 final String nameWithoutExtension = engine.getArchive().getName().substring(0, engine.getArchive().getName().lastIndexOf("."));
                 final Calendar calendar = Calendar.getInstance();
 
