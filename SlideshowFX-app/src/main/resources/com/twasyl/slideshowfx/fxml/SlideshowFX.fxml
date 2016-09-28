@@ -244,6 +244,7 @@
                     <MenuItem text="Take a tour" onAction="#takeTour" />
                     <MenuItem text="Help" onAction="#displayHelp" />
                     <MenuItem text="Display logs" onAction="#displayLogs" />
+                    <MenuItem text="Plugin center" onAction="#displayPluginCenter" />
                     <MenuItem text="About" onAction="#displayAbout" />
                 </Menu>
             </MenuBar>

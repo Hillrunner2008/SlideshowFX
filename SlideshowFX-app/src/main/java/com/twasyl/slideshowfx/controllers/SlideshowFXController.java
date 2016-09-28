@@ -174,7 +174,7 @@ public class SlideshowFXController implements Initializable {
 
     /**
      * Loads a SlideshowFX template. This method displays an open dialog which only allows to open template files (with
-     * .sfxt archiveExtension) and then call the {@link #openTemplateOrPresentation(java.io.File)} method.
+     * .sfxt archiveExtension) and then call the {@link #openTemplateOrPresentation(File)} method.
      *
      * @param event the event that triggered the call.
      */
@@ -196,7 +196,7 @@ public class SlideshowFXController implements Initializable {
 
     /**
      * Open a SlideshowFX presentation. This method displays an open dialog which only allows to open presentation files
-     * (with the .sfx archiveExtension) and then call {@link #openTemplateOrPresentation(java.io.File)} method.
+     * (with the .sfx archiveExtension) and then call {@link #openTemplateOrPresentation(File)} method.
      *
      * @param event the event that triggered the call.
      */
@@ -482,15 +482,31 @@ public class SlideshowFXController implements Initializable {
 
     /**
      * Displays the help stage.
-     * @param event THe source event.
+     * @param event The source event.
      */
     @FXML private void displayHelp(final ActionEvent event) {
         new HelpStage().show();
     }
 
     /**
+     * Displays the plugin center.
+     * @param event The source event.
+     */
+    @FXML private void displayPluginCenter(final ActionEvent event) {
+        FXMLLoader loader = new FXMLLoader(ResourceHelper.getURL("/com/twasyl/slideshowfx/fxml/PluginCenter.fxml"));
+        try {
+            final Parent root = loader.load();
+            final PluginCenterController controller = loader.getController();
+
+            final ButtonType response = DialogHelper.showCancellableDialog("Plugin center", root);
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Can not open plugin center view", e);
+        }
+    }
+
+    /**
      * Copy the slide, update the menu of available slides and reload the presentation.
-     * The copy is delegated to {@link com.twasyl.slideshowfx.engine.presentation.PresentationEngine#duplicateSlide(Slide)}.
+     * The copy is delegated to {@link PresentationEngine#duplicateSlide(Slide)}.
      *
      * @param event
      */
@@ -511,7 +527,7 @@ public class SlideshowFXController implements Initializable {
     }
 
     /**
-     * Delete a slide from the presentation. The deletion is delegated to {@link com.twasyl.slideshowfx.engine.presentation.PresentationEngine#deleteSlide(String)}.
+     * Delete a slide from the presentation. The deletion is delegated to {@link PresentationEngine#deleteSlide(String)}.
      *
      * @param event
      */
@@ -555,7 +571,7 @@ public class SlideshowFXController implements Initializable {
 
     /**
      * Saves a copy of the existing presentation. A save dialog is displayed to the user.
-     * The saving is delegated to {@link #savePresentation(java.io.File, boolean)}.
+     * The saving is delegated to {@link #savePresentation(File, boolean)}.
      *
      * @param event
      */
@@ -737,9 +753,9 @@ public class SlideshowFXController implements Initializable {
      * if it ends with {@code .sfx} it is considered as a template.
      *
      * @param dataFile the file corresponding to either a template or a presentation.
-     * @throws java.lang.IllegalArgumentException If the file is null.
-     * @throws java.io.FileNotFoundException      If dataFile does not exist.
-     * @throws java.lang.IllegalAccessException   If the file can not be accessed.
+     * @throws IllegalArgumentException If the file is null.
+     * @throws FileNotFoundException      If dataFile does not exist.
+     * @throws IllegalAccessException   If the file can not be accessed.
      */
     public void openTemplateOrPresentation(final File dataFile) throws IllegalArgumentException, IllegalAccessException, FileNotFoundException {
         if (dataFile == null) throw new IllegalArgumentException("The dataFile can not be null");
@@ -902,7 +918,7 @@ public class SlideshowFXController implements Initializable {
     /**
      * Save the current opened presentation to the given {@param archiveFile}. The process for
      * saving the presentation is only started if the given {@param archiveFile} is not {@code null}. If the process is
-     * started, a {@link com.twasyl.slideshowfx.concurrent.SavePresentationTask} is started with the current presentation
+     * started, a {@link SavePresentationTask} is started with the current presentation
      * and {@code archiveFile}.
      * @param archiveFile The file to save the presentation in.
      * @param waitToFinish Indicates if the method should wait before exiting.
