@@ -1,28 +1,25 @@
 package com.twasyl.slideshowfx.controllers;
 
-import com.twasyl.slideshowfx.content.extension.IContentExtension;
-import com.twasyl.slideshowfx.hosting.connector.IHostingConnector;
+import com.twasyl.slideshowfx.global.configuration.GlobalConfiguration;
 import com.twasyl.slideshowfx.io.SlideshowFXExtensionFilter;
-import com.twasyl.slideshowfx.markup.IMarkup;
-import com.twasyl.slideshowfx.osgi.OSGiManager;
 import com.twasyl.slideshowfx.plugin.InstalledPlugin;
-import com.twasyl.slideshowfx.snippet.executor.ISnippetExecutor;
+import com.twasyl.slideshowfx.ui.controls.PluginFileButton;
 import com.twasyl.slideshowfx.utils.DialogHelper;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.control.Button;
-import javafx.scene.control.TableView;
 import javafx.scene.input.DragEvent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
+import javafx.scene.layout.TilePane;
 import javafx.stage.FileChooser;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
-import java.util.*;
+import java.util.ResourceBundle;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -40,14 +37,8 @@ public class PluginCenterController implements Initializable {
 
     private static Logger LOGGER = Logger.getLogger(PluginCenterController.class.getName());
 
-    private enum PluginAction {
-        INSTALL, REMOVE, DO_NOT_CHANGE;
-    }
-
-    @FXML private TableView<InstalledPlugin> pluginsView;
+    @FXML private TilePane plugins;
     @FXML private Button installPlugin;
-
-    private Map<InstalledPlugin, PluginAction> pluginsAction;
 
     @FXML
     private void dragEntersPluginButton(final DragEvent event) {
@@ -118,8 +109,7 @@ public class PluginCenterController implements Initializable {
             if(fileSeemsValid(pluginFile)) {
                 final InstalledPlugin installedPlugin = this.createInstalledPlugin(pluginFile);
 
-                this.pluginsAction.put(installedPlugin, PluginAction.INSTALL);
-                this.pluginsView.getItems().add(installedPlugin);
+                this.plugins.getChildren().add(new PluginFileButton(pluginFile));
 
                 valid = true;
             }
@@ -197,21 +187,18 @@ public class PluginCenterController implements Initializable {
         return plugin;
     }
 
-    protected void populatePluginsTable() {
-        final List<InstalledPlugin> installedPlugins = OSGiManager.getInstalledPlugins(IMarkup.class);
-        installedPlugins.addAll(OSGiManager.getInstalledPlugins(IContentExtension.class));
-        installedPlugins.addAll(OSGiManager.getInstalledPlugins(ISnippetExecutor.class));
-        installedPlugins.addAll(OSGiManager.getInstalledPlugins(IHostingConnector.class));
-
-        installedPlugins.forEach(plugin -> this.pluginsAction.put(plugin, PluginAction.DO_NOT_CHANGE));
-
-        this.pluginsView.getItems().addAll(installedPlugins);
+    protected void populatePluginsView() {
+        for(File pluginFile : GlobalConfiguration.PLUGINS_DIRECTORY.listFiles()) {
+            if(pluginFile.getName().endsWith(".jar")) {
+                final PluginFileButton button = new PluginFileButton(pluginFile);
+                button.setSelected(true);
+                this.plugins.getChildren().add(button);
+            }
+        }
     }
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        this.pluginsAction = new HashMap<>();
-
-        this.populatePluginsTable();
+        this.populatePluginsView();
     }
 }

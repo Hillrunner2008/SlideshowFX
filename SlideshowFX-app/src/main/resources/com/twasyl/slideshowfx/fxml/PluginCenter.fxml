@@ -1,36 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.scene.control.TableColumn?>
-<?import javafx.scene.control.TableView?>
-<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import java.lang.Double?>
+<?import javafx.geometry.Insets?>
+<VBox xmlns:fx="http://javafx.com/fxml" fx:controller="com.twasyl.slideshowfx.controllers.PluginCenterController"
+      spacing="20" alignment="CENTER">
 
-<?import javafx.scene.control.cell.PropertyValueFactory?>
-<?import javafx.scene.control.Button?>
+    <fx:define>
+        <Double fx:id="GRID_SPACING" fx:value="5" />
+        <Double fx:id="PADDING" fx:value="10" />
+    </fx:define>
 
-<?import javafx.scene.layout.FlowPane?>
-<BorderPane xmlns:fx="http://javafx.com/fxml" fx:controller="com.twasyl.slideshowfx.controllers.PluginCenterController">
-    <top>
-        <FlowPane alignment="CENTER">
-            <Button fx:id="installPlugin" text="Install plugin" onAction="#choosePlugin"
-                    onDragEntered="#dragEntersPluginButton" onDragDropped="#dropFileOverPluginButton"
-                    onDragExited="#dragExitsPluginButton" />
-        </FlowPane>
-    </top>
+    <padding>
+        <Insets top="$PADDING" right="$PADDING" bottom="$PADDING" left="$PADDING" />
+    </padding>
 
-    <center>
-        <TableView fx:id="pluginsView">
-            <columns>
-                <TableColumn text="Name" prefWidth="395">
-                    <cellValueFactory>
-                        <PropertyValueFactory property="name" />
-                    </cellValueFactory>
-                </TableColumn>
-                <TableColumn text="Version" prefWidth="65">
-                    <cellValueFactory>
-                        <PropertyValueFactory property="version" />
-                    </cellValueFactory>
-                </TableColumn>
-            </columns>
-        </TableView>
-    </center>
-</BorderPane>
+    <Button fx:id="installPlugin" text="Install plugin" onAction="#choosePlugin"
+            onDragEntered="#dragEntersPluginButton" onDragDropped="#dropFileOverPluginButton"
+            onDragExited="#dragExitsPluginButton" />
+
+    <TilePane fx:id="plugins" hgap="${GRID_SPACING}" vgap="${GRID_SPACING}" prefColumns="5" />
+</VBox>

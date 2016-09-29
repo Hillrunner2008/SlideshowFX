@@ -19,13 +19,13 @@ public class PluginCenterTest extends Application {
     @Override
     public void init() throws Exception {
         super.init();
-        OSGiManager.startAndDeploy();
+     //   OSGiManager.startAndDeploy();
     }
 
     @Override
     public void stop() throws Exception {
         super.stop();
-        OSGiManager.stop();
+       // OSGiManager.stop();
     }
 
     @Override
@@ -33,6 +33,8 @@ public class PluginCenterTest extends Application {
         final Parent root = FXMLLoader.load(PluginCenterTest.class.getResource("/com/twasyl/slideshowfx/fxml/PluginCenter.fxml"));
 
         final Scene scene = new Scene(root);
+        scene.getStylesheets().add("/com/twasyl/slideshowfx/css/Default.css");
+
         primaryStage.setScene(scene);
         primaryStage.show();
     }
