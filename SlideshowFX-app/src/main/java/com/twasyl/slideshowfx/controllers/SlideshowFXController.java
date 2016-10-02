@@ -499,6 +499,9 @@ public class SlideshowFXController implements Initializable {
             final PluginCenterController controller = loader.getController();
 
             final ButtonType response = DialogHelper.showCancellableDialog("Plugin center", root);
+            if(response.equals(ButtonType.OK)) {
+                controller.validatePluginsConfiguration();
+            }
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Can not open plugin center view", e);
         }

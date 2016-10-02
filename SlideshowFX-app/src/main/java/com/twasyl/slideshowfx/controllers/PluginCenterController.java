@@ -1,6 +1,5 @@
 package com.twasyl.slideshowfx.controllers;
 
-import com.twasyl.slideshowfx.global.configuration.GlobalConfiguration;
 import com.twasyl.slideshowfx.io.SlideshowFXExtensionFilter;
 import com.twasyl.slideshowfx.plugin.InstalledPlugin;
 import com.twasyl.slideshowfx.ui.controls.PluginFileButton;
@@ -19,12 +18,15 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.util.ResourceBundle;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static com.twasyl.slideshowfx.global.configuration.GlobalConfiguration.PLUGINS_DIRECTORY;
 
 /**
  * Controller of the {@code PluginCenter.fxml} view.
@@ -44,21 +46,9 @@ public class PluginCenterController implements Initializable {
     private void dragEntersPluginButton(final DragEvent event) {
         final Dragboard dragboard = event.getDragboard();
 
-        if(dragboard.hasFiles()) {
-            System.out.println("has files");
-            final File file = dragboard.getFiles().get(0);
+        if(event.getGestureSource() != this.installPlugin && dragboard.hasFiles()) {
 
-            try {
-                if(this.fileSeemsValid(file)) {
-                    System.out.println("is valid");
-                    event.acceptTransferModes(TransferMode.COPY_OR_MOVE);
-                    event.consume();
-                }
-            } catch (FileNotFoundException e) {
-                LOGGER.log(Level.SEVERE, "Can not check validity of file", e);
-            }
         }
-        System.out.println("out");
 
         event.consume();
     }
@@ -69,18 +59,36 @@ public class PluginCenterController implements Initializable {
     }
 
     @FXML
-    private void dropFileOverPluginButton(final DragEvent event) {
-        boolean success = false;
+    private void dragFilesOverPluginButton(final DragEvent event) {
         final Dragboard dragboard = event.getDragboard();
 
-        if(dragboard.hasFiles()) {
-            System.out.println("Drop - has files");
-            final File pluginFile = dragboard.getFiles().get(0);
-
-            success = this.checkChosenPluginFile(pluginFile);
+        if(event.getGestureSource() != this.installPlugin && dragboard.hasFiles()) {
+            event.acceptTransferModes(TransferMode.COPY);
         }
 
-        event.setDropCompleted(success);
+        event.consume();
+    }
+
+    @FXML
+    private void dropFileOverPluginButton(final DragEvent event) {
+        final Dragboard dragboard = event.getDragboard();
+        boolean allFilesAreValid;
+
+        if(event.getGestureSource() != this.installPlugin && dragboard.hasFiles()) {
+            allFilesAreValid = true;
+            File pluginFile;
+            int index = 0;
+
+            while(allFilesAreValid && index < dragboard.getFiles().size()) {
+                pluginFile = dragboard.getFiles().get(index++);
+
+                allFilesAreValid = this.checkChosenPluginFile(pluginFile);
+            }
+        } else {
+            allFilesAreValid = false;
+        }
+
+        event.setDropCompleted(allFilesAreValid);
         event.consume();
     }
 
@@ -188,13 +196,39 @@ public class PluginCenterController implements Initializable {
     }
 
     protected void populatePluginsView() {
-        for(File pluginFile : GlobalConfiguration.PLUGINS_DIRECTORY.listFiles()) {
+        for(File pluginFile : PLUGINS_DIRECTORY.listFiles()) {
             if(pluginFile.getName().endsWith(".jar")) {
                 final PluginFileButton button = new PluginFileButton(pluginFile);
                 button.setSelected(true);
                 this.plugins.getChildren().add(button);
             }
         }
+    }
+
+    /**
+     * Validate the user's choices: if already installed plugins are no more selected, uninstall them. If newly chosen
+     * plugins have been added, install them.
+     */
+    public void validatePluginsConfiguration() {
+        this.plugins.getChildren()
+                    .filtered(child -> child instanceof PluginFileButton)
+                    .forEach(child -> {
+                        final PluginFileButton button = (PluginFileButton) child;
+
+                        if(button.isSelected() && !button.getFile().getParent().equals(PLUGINS_DIRECTORY)) {
+                            try {
+                                Files.copy(button.getFile().toPath(), PLUGINS_DIRECTORY.toPath());
+                            } catch (IOException e) {
+                                LOGGER.log(Level.SEVERE, "Can not install plugin: " + button.getFile().getName());
+                            }
+                        } else if(!button.isSelected() && button.getFile().getParent().equals(PLUGINS_DIRECTORY)) {
+                            try {
+                                Files.delete(button.getFile().toPath());
+                            } catch (IOException e) {
+                                LOGGER.log(Level.SEVERE, "Can not uninstall plugin: " + button.getFile().getName());
+                            }
+                        }
+                     });
     }
 
     @Override

@@ -58,12 +58,14 @@ public class PluginFileButton extends ToggleButton {
             graphics.getChildren().add(icon);
         } else {
             final Text labelElement = new Text(label);
+            labelElement.getStyleClass().add("text");
             labelElement.setWrappingWidth(75);
             labelElement.setTextAlignment(TextAlignment.CENTER);
             graphics.getChildren().add(labelElement);
         }
 
         final Text versionElement = new Text(version);
+        versionElement.getStyleClass().add("text");
         versionElement.setWrappingWidth(75);
         versionElement.setTextAlignment(TextAlignment.CENTER);
         graphics.getChildren().add(versionElement);

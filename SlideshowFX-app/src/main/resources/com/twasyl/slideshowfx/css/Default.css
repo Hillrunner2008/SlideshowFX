@@ -467,6 +467,19 @@
     -fx-text-fill: app-color-orange;
 }
 
+.plugin-file-button, .plugin-file-button .text {
+     -fx-fill: app-color-text-fill;
+     -fx-color: -fx-fill;
+     -fx-text-fill: -fx-fill;
+}
+
+.plugin-file-button:selected .text {
+    -fx-fill: black;
+    -fx-color: -fx-fill;
+    -fx-text-fill: -fx-fill;
+}
+
 .plugin-file-button:selected {
      -fx-background-color: linear-gradient(from 50% 0% to 50% 100%, -app-color-dark-green 0%, -app-color-light-green 100%);
+     -fx-text-fill: black;
 }

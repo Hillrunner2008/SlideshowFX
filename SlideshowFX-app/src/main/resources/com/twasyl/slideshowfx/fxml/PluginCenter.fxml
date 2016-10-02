@@ -17,7 +17,9 @@
     </padding>
 
     <Button fx:id="installPlugin" text="Install plugin" onAction="#choosePlugin"
-            onDragEntered="#dragEntersPluginButton" onDragDropped="#dropFileOverPluginButton"
+            onDragEntered="#dragEntersPluginButton"
+            onDragOver="#dragFilesOverPluginButton"
+            onDragDropped="#dropFileOverPluginButton"
             onDragExited="#dragExitsPluginButton" />
 
     <TilePane fx:id="plugins" hgap="${GRID_SPACING}" vgap="${GRID_SPACING}" prefColumns="5" />
