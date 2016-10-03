@@ -90,7 +90,7 @@ import java.util.stream.Stream;
  *  represented by the FXML.
  *  
  *  @author Thierry Wasyczenko
- *  @version 1.0
+ *  @version 1.1
  *  @since SlideshowFX 1.0
  */
 public class SlideshowFXController implements Initializable {
@@ -499,8 +499,19 @@ public class SlideshowFXController implements Initializable {
             final PluginCenterController controller = loader.getController();
 
             final ButtonType response = DialogHelper.showCancellableDialog("Plugin center", root);
+
             if(response.equals(ButtonType.OK)) {
                 controller.validatePluginsConfiguration();
+
+                this.openedPresentationsTabPane.getTabs()
+                        .stream()
+                        .filter(tab -> tab.getUserData() != null && tab.getUserData() instanceof PresentationViewController)
+                        .forEach(tab -> {
+                            ((PresentationViewController) tab.getUserData()).refreshMarkupSyntax();
+                            ((PresentationViewController) tab.getUserData()).refreshContentExtensions();
+                        });
+
+                this.refreshHostingConnectors();
             }
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Can not open plugin center view", e);
@@ -694,39 +705,6 @@ public class SlideshowFXController implements Initializable {
      */
     @FXML private void exitApplication(ActionEvent event) {
         this.closeAllPresentations(true);
-    }
-
-    /**
-     * This method shows an open dialog that allows to install plugin.
-     *
-     * @param event
-     */
-
-    @FXML
-    private void installPlugin(ActionEvent event) {
-        FileChooser chooser = new FileChooser();
-        chooser.getExtensionFilters().add(SlideshowFXExtensionFilter.PLUGIN_FILES);
-        File bundleFile = chooser.showOpenDialog(null);
-
-        if(bundleFile != null) {
-            Object service = null;
-            try {
-                service = OSGiManager.deployBundle(bundleFile);
-            } catch (IOException e) {
-                LOGGER.log(Level.WARNING, "Can not deploy the plugin", e);
-            }
-
-            if(service != null) {
-                final Stream<Tab> stream = this.openedPresentationsTabPane.getTabs()
-                        .stream()
-                        .filter(tab -> tab.getUserData() != null && tab.getUserData() instanceof PresentationViewController);
-                if(service instanceof IMarkup) {
-                    stream.forEach(tab -> ((PresentationViewController) tab.getUserData()).refreshMarkupSyntax());
-                } else if(service instanceof IContentExtension) {
-                    stream.forEach(tab -> ((PresentationViewController) tab.getUserData()).refreshContentExtensions());
-                }
-            }
-        }
     }
 
     /**
@@ -1042,6 +1020,23 @@ public class SlideshowFXController implements Initializable {
     }
 
     /**
+     * Refresh the {@link IHostingConnector hosting connectors} items in the UI. The items for downloading and
+     * uploading presentations will be updated.
+     */
+    private void refreshHostingConnectors() {
+        this.downloadersMenu.getItems().clear();
+        this.uploadersMenu.getItems().clear();
+
+        OSGiManager.getInstalledServices(IHostingConnector.class)
+                .stream()
+                .sorted((hostingConnector1, hostingConnector2) -> hostingConnector1.getName().compareTo(hostingConnector2.getName()))
+                .forEach(hostingConnector -> {
+                    createUploaderMenuItem(hostingConnector);
+                    createDownloaderMenuItem(hostingConnector);
+                });
+    }
+
+    /**
      * Create the MenuItem that will be placed in the menu for uploaders, for the given {@code hostingConnector}. The {@code hostingConnector}
      * is set as user data of the created MenuItem. The created MenuItem is added to the Upload menu.
      * @param hostingConnector The hostingConnector attached to the MenuItem that will be created.
@@ -1256,14 +1251,7 @@ public class SlideshowFXController implements Initializable {
 
         this.whenNoDocumentOpened.forEach(disableElementLambda);
 
-        // Create the entries in the Upload & Download menus
-        OSGiManager.getInstalledServices(IHostingConnector.class)
-                .stream()
-                .sorted((hostingConnector1, hostingConnector2) -> hostingConnector1.getName().compareTo(hostingConnector2.getName()))
-                .forEach(hostingConnector -> {
-                    createUploaderMenuItem(hostingConnector);
-                    createDownloaderMenuItem(hostingConnector);
-                });
+        refreshHostingConnectors();
 
         this.openedPresentationsTabPane.getSelectionModel().selectedItemProperty().addListener((value, oldSelection, newSelection) -> {
             if(newSelection != null) {

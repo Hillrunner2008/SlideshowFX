@@ -467,6 +467,10 @@
     -fx-text-fill: app-color-orange;
 }
 
+.plugin-file-button .tooltip {
+    -fx-text-fill: app-color-text-fill;
+}
+
 .plugin-file-button, .plugin-file-button .text {
      -fx-fill: app-color-text-fill;
      -fx-color: -fx-fill;

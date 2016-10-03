@@ -228,7 +228,6 @@
                     <MenuItem fx:id="openWebApplicationMenuItem" text="Open web application" onAction="#displayWebApplication" disable="true" />
                 </Menu>
                 <Menu text="Options" fx:id="optionsMenu">
-                    <MenuItem text="Install plugin" onAction="#installPlugin" />
                     <MenuItem text="Options" onAction="#showOptionsDialog" />
                 </Menu>
                 <Menu text="Tools" fx:id="toolsMenu">

@@ -1,6 +1,7 @@
 package com.twasyl.slideshowfx.controllers;
 
 import com.twasyl.slideshowfx.io.SlideshowFXExtensionFilter;
+import com.twasyl.slideshowfx.osgi.OSGiManager;
 import com.twasyl.slideshowfx.plugin.InstalledPlugin;
 import com.twasyl.slideshowfx.ui.controls.PluginFileButton;
 import com.twasyl.slideshowfx.utils.DialogHelper;
@@ -13,12 +14,12 @@ import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.TilePane;
 import javafx.stage.FileChooser;
+import org.osgi.framework.BundleException;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
-import java.nio.file.Files;
 import java.util.ResourceBundle;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -41,22 +42,6 @@ public class PluginCenterController implements Initializable {
 
     @FXML private TilePane plugins;
     @FXML private Button installPlugin;
-
-    @FXML
-    private void dragEntersPluginButton(final DragEvent event) {
-        final Dragboard dragboard = event.getDragboard();
-
-        if(event.getGestureSource() != this.installPlugin && dragboard.hasFiles()) {
-
-        }
-
-        event.consume();
-    }
-
-    @FXML
-    private void dragExitsPluginButton(final DragEvent event) {
-        event.consume();
-    }
 
     @FXML
     private void dragFilesOverPluginButton(final DragEvent event) {
@@ -115,9 +100,10 @@ public class PluginCenterController implements Initializable {
 
         try {
             if(fileSeemsValid(pluginFile)) {
-                final InstalledPlugin installedPlugin = this.createInstalledPlugin(pluginFile);
+                final PluginFileButton pluginFileButton = new PluginFileButton(pluginFile);
+                pluginFileButton.setSelected(true);
 
-                this.plugins.getChildren().add(new PluginFileButton(pluginFile));
+                this.plugins.getChildren().add(pluginFileButton);
 
                 valid = true;
             }
@@ -215,17 +201,17 @@ public class PluginCenterController implements Initializable {
                     .forEach(child -> {
                         final PluginFileButton button = (PluginFileButton) child;
 
-                        if(button.isSelected() && !button.getFile().getParent().equals(PLUGINS_DIRECTORY)) {
+                        if(button.isSelected() && !button.getFile().getParentFile().equals(PLUGINS_DIRECTORY)) {
                             try {
-                                Files.copy(button.getFile().toPath(), PLUGINS_DIRECTORY.toPath());
+                                OSGiManager.deployBundle(button.getFile());
                             } catch (IOException e) {
-                                LOGGER.log(Level.SEVERE, "Can not install plugin: " + button.getFile().getName());
+                                LOGGER.log(Level.SEVERE, "Can not install plugin: " + button.getFile().getName(), e);
                             }
-                        } else if(!button.isSelected() && button.getFile().getParent().equals(PLUGINS_DIRECTORY)) {
+                        } else if(!button.isSelected() && button.getFile().getParentFile().equals(PLUGINS_DIRECTORY)) {
                             try {
-                                Files.delete(button.getFile().toPath());
-                            } catch (IOException e) {
-                                LOGGER.log(Level.SEVERE, "Can not uninstall plugin: " + button.getFile().getName());
+                                OSGiManager.uninstallBundle(button.getFile());
+                            } catch (IOException | BundleException e) {
+                                LOGGER.log(Level.SEVERE, "Can not uninstall plugin: " + button.getFile().getName(), e);
                             }
                         }
                      });

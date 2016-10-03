@@ -48,7 +48,6 @@ public class PluginFileButton extends ToggleButton {
         this.setMinSize(BUTTON_SIZE, BUTTON_SIZE);
         this.setMaxSize(BUTTON_SIZE, BUTTON_SIZE);
 
-        this.setTooltip(new Tooltip(label + ":\n" + description));
         this.getStyleClass().add("plugin-file-button");
 
         final VBox graphics = new VBox(2);
@@ -71,6 +70,24 @@ public class PluginFileButton extends ToggleButton {
         graphics.getChildren().add(versionElement);
 
         this.setGraphic(graphics);
+
+        this.selectedProperty().addListener((selectedValue, oldSelected, newSelected) -> {
+            final StringBuilder tooltipText = new StringBuilder(label).append(":\n")
+                    .append(description).append(".\n");
+
+            if(newSelected) tooltipText.append("Will be installed");
+            else tooltipText.append("Will not be installed");
+
+            tooltipText.append('.');
+
+            Tooltip tooltip = this.getTooltip();
+            if(tooltip == null) {
+                tooltip = new Tooltip();
+                this.setTooltip(tooltip);
+            }
+
+            tooltip.setText(tooltipText.toString());
+        });
     }
 
     public File getFile() {
